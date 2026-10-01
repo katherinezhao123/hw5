@@ -1,0 +1,11 @@
+*.hi
+*.o
+__pycache__/
+# previews written by Preview.hs (python/<name>.py and .png); keep the runtime
+python/*.png
+python/*.py
+!python/plotter_runtime.py
+!python/nextdraw_backend.py
+!python/mock_nextdraw.py
+# pages made by a markdown viewer
+*.html
