@@ -61,7 +61,10 @@ lookupVar :: Name -> Env -> Double
 lookupVar name env =
     -- TODO (Part 1): use Map.lookup and a case expression on its result
     --   (Just value, or Nothing).
-    error "TODO (Part 1): lookupVar"
+    let x = Map.lookup name env in 
+        case x of 
+            Nothing -> error ("undefined variable: " ++ name)
+            Just value -> value
 
 
 -- | Returns a new environment in which the variable has the given value,
@@ -76,7 +79,8 @@ assignVar name value env = Map.insert name value env
 saveVar :: Name -> Env -> Maybe Double
 saveVar name env =
     -- TODO (Part 5): this is one Data.Map function.
-    error "TODO (Part 5): saveVar"
+    Map.lookup name env 
+        
 
 
 -- | Puts back what saveVar remembered: if there was an old value, the
@@ -85,7 +89,9 @@ saveVar name env =
 restoreVar :: Name -> Maybe Double -> Env -> Env
 restoreVar name saved env =
     -- TODO (Part 5): pattern-match on `saved` (Just value / Nothing).
-    error "TODO (Part 5): restoreVar"
+    case saved of
+        Nothing ->  Map.delete name env
+        Just value -> Map.insert name value env 
 
 
 --------------------------------------------------------------------------------
@@ -135,22 +141,20 @@ eval :: Env -> Expr -> Double
 eval _   (Num n)     = n          -- PROVIDED: a number evaluates to itself
 eval env (Var name)  =
     -- TODO (Part 1): a variable evaluates to its value in the environment.
-    error "TODO (Part 1): eval for Var"
+    lookupVar name env
 eval env (Add e1 e2) =
     -- TODO (Part 1): evaluate both sides (recursively), then add.
-    error "TODO (Part 1): eval for Add"
+    eval env e1 + eval env e2   
 eval env (Sub e1 e2) =
     -- TODO (Part 1)
-    error "TODO (Part 1): eval for Sub"
+    eval env e1 - eval env e2 
 eval env (Mul e1 e2) =
     -- TODO (Part 1)
-    error "TODO (Part 1): eval for Mul"
-eval env (Div e1 e2) =
-    -- TODO (Part 1): if the divisor EVALUATES to 0, stop with
-    --     error "division by zero"
-    -- (Haskell would otherwise quietly produce Infinity or NaN.)
-    -- A guard with a `where` for the divisor's value works well here.
-    error "TODO (Part 1): eval for Div"
+    eval env e1 * eval env e2
+eval env (Div e1 e2) 
+    | divisor == 0 = error ("division by zero")
+    | divisor /= 0 = eval env e1 / divisor
+    where divisor = eval env e2
 
 
 --------------------------------------------------------------------------------
@@ -199,41 +203,60 @@ compileStmt _ env Dot = (env, dotCode)               -- PROVIDED: an example
 
 compileStmt _ env (Move dir distance) =
     -- TODO (Part 2): evaluate the distance, and use moveCode.
-    error "TODO (Part 2): compileStmt for Move"
+    let x = eval env distance
+    in (env, moveCode dir x)
 
 compileStmt _ env (Line dir distance) =
     -- TODO (Part 2)
-    error "TODO (Part 2): compileStmt for Line"
+    let x = eval env distance
+    in (env, lineCode dir x)
 
 compileStmt _ env (Square side) =
     -- TODO (Part 2)
-    error "TODO (Part 2): compileStmt for Square"
+    let x = eval env side
+    in (env, squareCode x)
 
 compileStmt _ env (Rectangle wid ht) =
     -- TODO (Part 2)
-    error "TODO (Part 2): compileStmt for Rectangle"
+    let x = eval env wid 
+        y = eval env ht 
+    in (env, rectangleCode x y)
 
 compileStmt _ env (Circle radius) =
     -- TODO (Part 3)
-    error "TODO (Part 3): compileStmt for Circle"
+    let x = eval env radius 
+    in (env, circleCode x)
 
 compileStmt _ env (Assign name expr) =
     -- TODO (Part 4): the new environment has `name` bound to the value of
     --   `expr` (evaluated in the CURRENT environment). There is no code.
     --   Wrap your result as   forceValue value (newEnv, [])   -- see below.
-    error "TODO (Part 4): compileStmt for Assign"
+    let value = eval env expr 
+        newEnv = Map.insert name value env
+    in forceValue value (newEnv, [])
 
 compileStmt procs env (For var from to body) =
     -- TODO (Part 5): see ASSIGNMENT.md. You will use toLoopBound, saveVar,
     --   compileLoop and restoreVar.
-    error "TODO (Part 5): compileStmt for For"
+    let start = toLoopBound (eval env from)
+        end = toLoopBound (eval env to)
+        saved = saveVar var env
+        (newEnv, code) = compileLoop procs var [start..end] env body
+   in (restoreVar var saved newEnv, code)
+   
+
 
 compileStmt procs env (Call name args) =
     -- TODO (Part 6): see ASSIGNMENT.md. You will use lookupProc, eval,
     --   bindParams, compileStmts and forceValues.
     --   Recursive procedure calls are invalid piq programs; the compiler does
     --   not check for them.
-    error "TODO (Part 6): compileStmt for Call"
+    let ProcDef _ params body = lookupProc name procs 
+        values = map (eval env) args 
+        localEnv = bindParams params values env 
+        (newEnv, code) = compileStmts procs localEnv body 
+    in if length params /= length args then error ("procedure " ++ name ++ " expects " ++ show (length params)++ " arguments, got " ++ show (length args))
+        else forceValues values (env,code)
 
 
 -- | Compiles a sequence of statements, one after another. Each statement is
@@ -244,7 +267,10 @@ compileStmts _     env []             = (env, [])     -- PROVIDED
 compileStmts procs env (stmt : stmts) =
     -- TODO (Part 4): compile `stmt`, then compile `stmts` in the environment
     --   that `stmt` produced. Use a `where` clause with two tuple patterns.
-    error "TODO (Part 4): compileStmts"
+   (env2, code1 ++code2)
+   where 
+    (env1, code1) = compileStmt procs env stmt
+    (env2,code2) = compileStmts procs env1 stmts
 
 
 -- | Compiles a loop body once for each value of the loop variable, in order.
@@ -252,9 +278,15 @@ compileStmts procs env (stmt : stmts) =
 --   with the loop variable set to the next value. An empty list of values
 --   compiles the body zero times.
 compileLoop :: ProcEnv -> Name -> [Int] -> Env -> [Stmt] -> (Env, [String])
-compileLoop procs var values env body =
+compileLoop _ _ [] env _ = (env, [])
+compileLoop procs var (v :values) env body =
+    (env3, code1 ++ code2)
+    where 
+        env1 = assignVar var (fromIntegral v) env
+        (env2 , code1) = compileStmts procs env1 body
+        (env3, code2) = compileLoop procs var values env2 body
     -- TODO (Part 5): recursion on the list of values, a lot like compileStmts.
-    error "TODO (Part 5): compileLoop"
+    
 
 
 -- | Checks that a loop bound is a whole number and converts it to an Int.
@@ -267,15 +299,19 @@ compileLoop procs var values env body =
 toLoopBound :: Double -> Int
 toLoopBound bound =
     -- TODO (Part 5)
-    error "TODO (Part 5): toLoopBound"
+    let x = round bound in
+        if fromIntegral x == bound then fromIntegral x
+        else error ("non-integral loop bound: " ++ show bound)
 
 
 -- | Binds each parameter name to the matching argument value, in order,
 --   starting from the given environment.
 bindParams :: [Name] -> [Double] -> Env -> Env
-bindParams params values env =
+bindParams [] [] env = env
+bindParams (p:params) (v: values) env =
     -- TODO (Part 6): recursion on both lists at once.
-    error "TODO (Part 6): bindParams"
+    bindParams params values (assignVar p v env)
+    
 
 
 --------------------------------------------------------------------------------
@@ -309,13 +345,13 @@ offset :: Direction -> Double -> (Double, Double)
 offset Rt distance = (distance, 0)                   -- PROVIDED: an example
 offset Lt distance =
     -- TODO (Part 2)
-    error "TODO (Part 2): offset Lt"
+    (-distance, 0)
 offset Up distance =
     -- TODO (Part 2)
-    error "TODO (Part 2): offset Up"
+    (0, distance)
 offset Dn distance =
     -- TODO (Part 2)
-    error "TODO (Part 2): offset Dn"
+    (0, -distance)
 
 
 -- | A dot: touch the pen to the paper at the current position.  (PROVIDED)
@@ -327,7 +363,8 @@ dotCode = [penDown, penUp]
 moveCode :: Direction -> Double -> [String]
 moveCode dir distance =
     -- TODO (Part 2): two lines of Python.
-    error "TODO (Part 2): moveCode"
+    let (x, y) = offset dir distance
+    in [penUp, moveRel x y]
 
 
 -- | Draw a line: lower the pen, move by the offset, raise the pen. The
@@ -335,7 +372,9 @@ moveCode dir distance =
 lineCode :: Direction -> Double -> [String]
 lineCode dir distance =
     -- TODO (Part 2): three lines of Python.
-    error "TODO (Part 2): lineCode"
+    let (x ,y) = offset dir distance
+    in [penDown, moveRel x y, penUp]
+
 
 
 -- | A square with the given side length, CENTERED on the current position.
@@ -349,7 +388,11 @@ lineCode dir distance =
 squareCode :: Double -> [String]
 squareCode side =
     -- TODO (Part 2)
-    error "TODO (Part 2): squareCode"
+    let (x, y) = offset Up side 
+        (a, b) = offset Dn side
+        (c,d ) = offset Lt side
+        (e,f) = offset Rt side
+    in [penUp, moveRel ((-side)/ 2) ((-side)/2), penDown, moveRel x y, moveRel e f, moveRel a b , moveRel c d, penUp, moveRel (side/2) (side/2) ]
 
 
 -- | A rectangle with the given width and height, centered on the current
@@ -357,7 +400,11 @@ squareCode side =
 rectangleCode :: Double -> Double -> [String]
 rectangleCode wid ht =
     -- TODO (Part 2)
-    error "TODO (Part 2): rectangleCode"
+    let (x, y) = offset Up ht 
+        (a, b) = offset Dn ht
+        (c, d) = offset Lt wid 
+        (e, f) = offset Rt wid
+    in [penUp, moveRel ((-wid)/ 2) ((-ht)/2), penDown, moveRel x y, moveRel e f, moveRel a b, moveRel c d, penUp, moveRel (wid/2) (ht /2) ]
 
 
 -- | How many straight segments make up a circle.  (PROVIDED)
@@ -371,4 +418,15 @@ circleSegments = 36
 circleCode :: Double -> [String]
 circleCode radius =
     -- TODO (Part 3)
-    error "TODO (Part 3): circleCode"
+    [penUp, moveRel radius 0, penDown] ++
+    map step [0 .. circleSegments -1 ] ++ [penUp, moveRel (-radius) 0]
+    where 
+        step k =
+            let thetak = 2 * pi * fromIntegral k / fromIntegral circleSegments
+                thetak1 = 2 * pi * fromIntegral (k+1) / fromIntegral circleSegments
+                xtheta = radius * cos thetak
+                ytheta = radius * sin thetak
+                xtheta1 = radius * cos thetak1
+                ytheta1 = radius * sin thetak1
+            in moveRel (xtheta1 - xtheta) (ytheta1-ytheta)
+    
